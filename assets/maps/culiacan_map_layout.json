@@ -1,0 +1,139 @@
+{
+  "map_info": {
+    "name": "Culiacán, Sinaloa",
+    "date": "2019-10-17", 
+    "scale": "1:10000",
+    "bounds": {
+      "width": 1200,
+      "height": 800
+    }
+  },
+  "zones": [
+    {
+      "id": "tres_rios",
+      "name": "Tres Ríos", 
+      "type": "TresRíos",
+      "position": [200, 300],
+      "size": [150, 100],
+      "initial_control": "SinaloaCartel",
+      "strategic_value": 0.9,
+      "civilian_density": 0.8,
+      "infrastructure_level": 0.7,
+      "description": "Residential area where Ovidio Guzmán was initially located"
+    },
+    {
+      "id": "military_base",
+      "name": "Military Base",
+      "type": "MilitaryBase", 
+      "position": [600, 200],
+      "size": [100, 80],
+      "initial_control": "MexicanMilitary",
+      "strategic_value": 0.8,
+      "civilian_density": 0.1,
+      "infrastructure_level": 0.9,
+      "description": "Government staging area and command center"
+    },
+    {
+      "id": "city_center",
+      "name": "City Center",
+      "type": "CityCenter",
+      "position": [400, 400], 
+      "size": [200, 150],
+      "initial_control": "Civilian",
+      "strategic_value": 0.6,
+      "civilian_density": 1.0,
+      "infrastructure_level": 0.8,
+      "description": "Commercial district with high civilian presence"
+    },
+    {
+      "id": "airport",
+      "name": "Culiacán International Airport",
+      "type": "Airport",
+      "position": [100, 600],
+      "size": [120, 90],
+      "initial_control": "MexicanMilitary", 
+      "strategic_value": 0.7,
+      "civilian_density": 0.3,
+      "infrastructure_level": 0.9,
+      "description": "Potential escape/extraction route"
+    },
+    {
+      "id": "highway_north",
+      "name": "Highway North",
+      "type": "Highway",
+      "position": [350, 150],
+      "size": [300, 50],
+      "initial_control": "Civilian",
+      "strategic_value": 0.5,
+      "civilian_density": 0.2,
+      "infrastructure_level": 0.6,
+      "description": "Main northern route out of city"
+    }
+  ],
+  "strategic_points": [
+    {
+      "id": "intersection_1",
+      "name": "Main Intersection", 
+      "type": "Intersection",
+      "position": [300, 280],
+      "importance": 0.8,
+      "requires_holding_time": 30,
+      "defensive_bonus": 0.2,
+      "description": "Key intersection for convoy movement"
+    },
+    {
+      "id": "bridge_river",
+      "name": "Tamazula River Bridge",
+      "type": "Bridge", 
+      "position": [450, 350],
+      "importance": 0.7,
+      "requires_holding_time": 45,
+      "defensive_bonus": 0.3,
+      "description": "Critical chokepoint over river"
+    },
+    {
+      "id": "comm_tower",
+      "name": "Communications Tower",
+      "type": "CommunicationsTower",
+      "position": [350, 500],
+      "importance": 0.6,
+      "requires_holding_time": 60,
+      "defensive_bonus": 0.1,
+      "description": "Controls city communications"
+    },
+    {
+      "id": "government_bldg",
+      "name": "Government Building", 
+      "type": "GovernmentBuilding",
+      "position": [380, 420],
+      "importance": 0.8,
+      "requires_holding_time": 90,
+      "defensive_bonus": 0.2,
+      "description": "Symbolic and administrative importance"
+    },
+    {
+      "id": "hospital",
+      "name": "Hospital General",
+      "type": "Hospital",
+      "position": [450, 380],
+      "importance": 0.9,
+      "requires_holding_time": 120,
+      "defensive_bonus": 0.0,
+      "description": "Medical facility - high civilian value"
+    }
+  ],
+  "spawn_points": {
+    "cartel": [
+      {"position": [180, 320], "unit_type": "Sicario"},
+      {"position": [220, 280], "unit_type": "Sicario"}, 
+      {"position": [190, 290], "unit_type": "NarcoTechTruck"},
+      {"position": [210, 310], "unit_type": "Sicario"}
+    ],
+    "military": [
+      {"position": [580, 190], "unit_type": "Infantry"},
+      {"position": [600, 210], "unit_type": "Infantry"},
+      {"position": [620, 180], "unit_type": "TacticalConvoy"}
+    ],
+    "ovidio": {"position": [200, 300]}
+  }
+}

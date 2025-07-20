@@ -1,0 +1,44 @@
+{
+  "target_info": {
+    "name": "Ovidio Guzmán López",
+    "alias": "El Ratón",
+    "faction": "SinaloaCartel",
+    "relation": "Son of Joaquín 'El Chapo' Guzmán",
+    "wanted_status": {
+      "us_charges": "Drug trafficking, money laundering",
+      "extradition_warrant": true,
+      "priority_level": "High Value Target"
+    }
+  },
+  "unit_stats": {
+    "health": 100,
+    "max_health": 100,
+    "damage": 0,
+    "range": 0,
+    "movement_speed": 80,
+    "special_abilities": []
+  },
+  "capture_mechanics": {
+    "capture_range": 15,
+    "extraction_time": 300,
+    "protection_detail": 2,
+    "escape_routes": [
+      {"route_id": "airport", "difficulty": 0.8},
+      {"route_id": "highway_north", "difficulty": 0.6},
+      {"route_id": "river_crossing", "difficulty": 0.7}
+    ]
+  },
+  "political_impact": {
+    "base_pressure_value": 0.5,
+    "media_multiplier": 2.0,
+    "international_concern": 0.3,
+    "release_threshold": 0.8
+  },
+  "historical_context": {
+    "date": "2019-10-17",
+    "location": "Tres Ríos neighborhood, Culiacán", 
+    "outcome": "Released due to cartel pressure and civilian safety concerns",
+    "government_justification": "Protecting innocent lives",
+    "cartel_response": "Coordinated city-wide attacks and threats"
+  }
+}

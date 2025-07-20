@@ -1,0 +1,21 @@
+[package]
+name = "culiacan-rts"
+version = "0.1.0"
+edition = "2021"
+authors = ["Battle of Culiacán RTS Team"]
+description = "Historical RTS simulation of the Battle of Culiacán (October 17, 2019)"
+
+[dependencies]
+bevy = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[[bin]]
+name = "culiacan-rts"
+path = "src/main.rs"
