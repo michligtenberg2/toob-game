@@ -1,8 +1,32 @@
+// ==================== BATTLE OF CULIACÁN RTS GAME ====================
+// Historical RTS simulation based on the events of October 17, 2019
+// Built with Rust and Bevy Engine
+// 
+// This game simulates the urban warfare that unfolded during the failed 
+// attempt to capture Ovidio Guzmán López in Culiacán, Mexico.
+// =====================================================================
+
 use bevy::prelude::*;
-use bevy_kira_audio::prelude::AudioSource as KiraAudioSource;
-use bevy_kira_audio::prelude::*;
+use bevy_kira_audio::prelude::{Audio as KiraAudio, AudioSource as KiraAudioSource, AudioPlugin as KiraAudioPlugin};
 use rand::{thread_rng, Rng};
 use std::time::Duration;
+
+// ==================== AUDIO SYSTEM ====================
+
+// For now using procedural audio through console logging
+// Future: Real audio files with Handle<KiraAudioSource>
+
+// ==================== ISOMETRIC SYSTEM ====================
+
+#[derive(Component)]
+struct IsometricCamera;
+
+// Isometric transformation helper function
+fn world_to_iso(world_pos: Vec3) -> Vec3 {
+    let x = (world_pos.x - world_pos.y) * 0.5; // Less dramatic angle
+    let y = (world_pos.x + world_pos.y) * 0.3; // Flatter perspective  
+    Vec3::new(x, y, world_pos.z)
+}
 
 // ==================== COMPONENTS ====================
 
@@ -176,7 +200,7 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins(AudioPlugin)
+        .add_plugins(KiraAudioPlugin)
         .init_resource::<GameState>()
         .add_systems(Startup, (setup_assets, setup_ui, setup_game).chain())
         .add_systems(Update, (
@@ -196,7 +220,7 @@ fn main() {
 
 // ==================== SETUP SYSTEMS ====================
 
-fn setup_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_assets(mut commands: Commands, _asset_server: Res<AssetServer>) {
     // For now, we'll create colored sprites programmatically
     // Later these can be replaced with actual sprite files
     
@@ -212,7 +236,7 @@ fn setup_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
         safehouse_sprite: Handle::default(),
         health_bar_bg: Handle::default(),
         health_bar_fill: Handle::default(),
-        main_font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+        main_font: Handle::default(), // Use default font for now
         gunshot_sound: Handle::default(),
         explosion_sound: Handle::default(),
         radio_chatter: Handle::default(),
@@ -221,9 +245,16 @@ fn setup_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(assets);
 }
 
-fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // UI Camera
-    commands.spawn(Camera2dBundle::default());
+fn setup_ui(mut commands: Commands, _asset_server: Res<AssetServer>) {
+    // Camera setup with better positioning for isometric view
+    commands.spawn((
+        Camera2dBundle {
+            transform: Transform::from_xyz(0.0, 0.0, 999.9)
+                .with_scale(Vec3::splat(1.2)), // Zoom out more to see units
+            ..default()
+        },
+        IsometricCamera,
+    ));
     
     // Main UI Container
     commands
@@ -260,9 +291,9 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextBundle::from_section(
                             "⚔️ Battle of Culiacán - October 17, 2019",
                             TextStyle {
-                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                                 font_size: 28.0,
                                 color: Color::rgb(1.0, 0.9, 0.6),
+                                ..default()
                             },
                         ),
                     ));
@@ -272,9 +303,9 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextBundle::from_section(
                             "Wave: 0",
                             TextStyle {
-                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                                 font_size: 22.0,
                                 color: Color::rgb(1.0, 0.3, 0.3),
+                                ..default()
                             },
                         ),
                         WaveText,
@@ -285,9 +316,9 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextBundle::from_section(
                             "Cartel: 0 | Military: 0",
                             TextStyle {
-                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                                 font_size: 18.0,
                                 color: Color::WHITE,
+                                ..default()
                             },
                         ),
                         ScoreText,
@@ -312,9 +343,9 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         TextBundle::from_section(
                             "🎯 MISSION: Defend Ovidio Guzmán López - Government forces incoming!",
                             TextStyle {
-                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                                 font_size: 20.0,
                                 color: Color::WHITE,
+                                ..default()
                             },
                         ),
                         StatusText,
@@ -341,9 +372,9 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     parent.spawn(TextBundle::from_section(
                         "🎮 SPACE: Deploy Roadblock | R: Call Reinforcements | ESC: Exit | F1: Help",
                         TextStyle {
-                            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                             font_size: 16.0,
                             color: Color::rgb(0.8, 0.8, 0.8),
+                            ..default()
                         },
                     ));
                 });
@@ -355,6 +386,56 @@ fn setup_game(mut commands: Commands, _assets: Option<Res<GameAssets>>) {
     info!("🏛️  Government forces attempt to capture Ovidio Guzmán López");
     info!("⚔️  Sinaloa Cartel prepares defensive operations");
     
+    // Audio atmosphere setup
+    info!("📻 *RADIO STATIC* 'This is Command... Operation Black Thursday is a go...'");
+    info!("🌅 *MORNING SOUNDS* Culiacán awakens to the sound of helicopters...");
+    info!("🚁 *DISTANT ROTOR BLADES* Military forces approaching coordinates...");
+    
+    // Create visible ground plane
+    commands.spawn((
+        SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgb(0.3, 0.4, 0.2), // Darker ground for contrast
+                custom_size: Some(Vec2::new(800.0, 600.0)),
+                ..default()
+            },
+            transform: Transform::from_xyz(0.0, 0.0, -10.0), // No rotation for now
+            ..default()
+        },
+        Name::new("Ground"),
+    ));
+    
+    // Simple grid lines for reference
+    for i in -5..=5 {
+        // Vertical lines
+        commands.spawn((
+            SpriteBundle {
+                sprite: Sprite {
+                    color: Color::rgba(0.5, 0.5, 0.5, 0.3),
+                    custom_size: Some(Vec2::new(1.0, 400.0)),
+                    ..default()
+                },
+                transform: Transform::from_xyz(i as f32 * 80.0, 0.0, -5.0),
+                ..default()
+            },
+            Name::new("GridLine"),
+        ));
+        
+        // Horizontal lines  
+        commands.spawn((
+            SpriteBundle {
+                sprite: Sprite {
+                    color: Color::rgba(0.5, 0.5, 0.5, 0.3),
+                    custom_size: Some(Vec2::new(400.0, 1.0)),
+                    ..default()
+                },
+                transform: Transform::from_xyz(0.0, i as f32 * 60.0, -5.0),
+                ..default()
+            },
+            Name::new("GridLine"),
+        ));
+    }
+    
     // Spawn Ovidio (High Value Target) in safehouse
     spawn_ovidio(&mut commands, Vec3::new(-300.0, 200.0, 0.0));
     
@@ -365,6 +446,7 @@ fn setup_game(mut commands: Commands, _assets: Option<Res<GameAssets>>) {
     }
     
     // Spawn safehouse objective with enhanced graphics
+    let safehouse_pos = Vec3::new(-300.0, 200.0, 0.0);
     commands.spawn((
         SpriteBundle {
             sprite: Sprite {
@@ -372,12 +454,13 @@ fn setup_game(mut commands: Commands, _assets: Option<Res<GameAssets>>) {
                 custom_size: Some(Vec2::new(120.0, 80.0)),
                 ..default()
             },
-            transform: Transform::from_translation(Vec3::new(-300.0, 200.0, -1.0)),
+            transform: Transform::from_translation(world_to_iso(safehouse_pos) + Vec3::new(0.0, 0.0, -1.0)),
+            // Remove rotation for visibility
             ..default()
         },
         Objective {
             objective_type: ObjectiveType::Safehouse,
-            position: Vec3::new(-300.0, 200.0, 0.0),
+            position: safehouse_pos,
             radius: 100.0,
             health: 200.0,
         },
@@ -394,7 +477,7 @@ fn setup_game(mut commands: Commands, _assets: Option<Res<GameAssets>>) {
                     ..default()
                 },
             ),
-            transform: Transform::from_translation(Vec3::new(-300.0, 250.0, 1.0)),
+            transform: Transform::from_translation(world_to_iso(safehouse_pos) + Vec3::new(0.0, 40.0, 1.0)),
             ..default()
         },
     ));
@@ -418,7 +501,8 @@ fn spawn_ovidio(commands: &mut Commands, position: Vec3) {
                 custom_size: Some(Vec2::new(30.0, 30.0)),
                 ..default()
             },
-            transform: Transform::from_translation(position),
+            transform: Transform::from_translation(world_to_iso(position)),
+            // Remove rotation for visibility
             ..default()
         },
         Unit {
@@ -438,17 +522,17 @@ fn spawn_ovidio(commands: &mut Commands, position: Vec3) {
         },
     )).id();
     
-    // Add name label for Ovidio
+    // Add crown emoji label for Ovidio
     commands.spawn(Text2dBundle {
         text: Text::from_section(
-            "👑 OVIDIO",
+            "👑",
             TextStyle {
-                font_size: 12.0,
+                font_size: 20.0,
                 color: Color::YELLOW,
                 ..default()
             },
         ),
-        transform: Transform::from_translation(position + Vec3::new(0.0, 25.0, 1.0)),
+        transform: Transform::from_translation(world_to_iso(position) + Vec3::new(0.0, 25.0, 1.0)),
         ..default()
     });
     
@@ -457,18 +541,21 @@ fn spawn_ovidio(commands: &mut Commands, position: Vec3) {
 }
 
 fn spawn_unit(commands: &mut Commands, unit_type: UnitType, faction: Faction, position: Vec3) {
-    let (color, size, health, damage, range, speed) = match (&unit_type, &faction) {
+    // Get unit color, size, health, damage, range, speed based on type and faction
+    let (color, size, _emoji, health, damage, range, speed) = match (&unit_type, &faction) {
         (UnitType::Sicario, Faction::Cartel) => 
-            (Color::rgb(0.9, 0.2, 0.2), Vec2::new(18.0, 18.0), 80.0, 25.0, 120.0, 100.0),
+            (Color::rgb(0.9, 0.2, 0.2), Vec2::new(18.0, 18.0), "🔫", 80.0, 25.0, 120.0, 100.0),
         (UnitType::Enforcer, Faction::Cartel) => 
-            (Color::rgb(0.7, 0.1, 0.1), Vec2::new(24.0, 24.0), 120.0, 40.0, 150.0, 80.0),
+            (Color::rgb(0.7, 0.1, 0.1), Vec2::new(24.0, 24.0), "⚔️", 120.0, 40.0, 150.0, 80.0),
         (UnitType::Soldier, Faction::Military) => 
-            (Color::rgb(0.2, 0.6, 0.2), Vec2::new(18.0, 18.0), 100.0, 30.0, 140.0, 90.0),
+            (Color::rgb(0.2, 0.6, 0.2), Vec2::new(18.0, 18.0), "🪖", 100.0, 30.0, 140.0, 90.0),
         (UnitType::SpecialForces, Faction::Military) => 
-            (Color::rgb(0.1, 0.8, 0.1), Vec2::new(22.0, 22.0), 140.0, 50.0, 180.0, 110.0),
+            (Color::rgb(0.1, 0.8, 0.1), Vec2::new(22.0, 22.0), "🎯", 140.0, 50.0, 180.0, 110.0),
         (UnitType::Vehicle, Faction::Military) => 
-            (Color::rgb(0.3, 0.7, 0.3), Vec2::new(35.0, 25.0), 200.0, 60.0, 200.0, 70.0),
-        _ => (Color::GRAY, Vec2::new(18.0, 18.0), 100.0, 20.0, 100.0, 80.0),
+            (Color::rgb(0.3, 0.7, 0.3), Vec2::new(35.0, 25.0), "🚗", 200.0, 60.0, 200.0, 70.0),
+        (UnitType::Roadblock, Faction::Cartel) => 
+            (Color::rgb(0.7, 0.4, 0.1), Vec2::new(30.0, 15.0), "🚧", 75.0, 0.0, 0.0, 0.0),
+        _ => (Color::GRAY, Vec2::new(18.0, 18.0), "❓", 100.0, 20.0, 100.0, 80.0),
     };
     
     let entity = commands.spawn((
@@ -478,7 +565,8 @@ fn spawn_unit(commands: &mut Commands, unit_type: UnitType, faction: Faction, po
                 custom_size: Some(size),
                 ..default()
             },
-            transform: Transform::from_translation(position),
+            transform: Transform::from_translation(world_to_iso(position)),
+            // Remove diamond rotation for better visibility
             ..default()
         },
         Unit {
@@ -503,7 +591,7 @@ fn spawn_unit(commands: &mut Commands, unit_type: UnitType, faction: Faction, po
         spawn_health_bar(commands, entity, position);
     }
     
-    // Add unit type indicator
+    // Add emoji indicator above the unit for better identification
     let unit_label = match unit_type {
         UnitType::Sicario => "🔫",
         UnitType::Enforcer => "💪", 
@@ -514,9 +602,25 @@ fn spawn_unit(commands: &mut Commands, unit_type: UnitType, faction: Faction, po
         _ => "❓",
     };
     
+    commands.spawn((
+        Text2dBundle {
+            text: Text::from_section(
+                unit_label,
+                TextStyle {
+                    font_size: 18.0,
+                    color: Color::WHITE,
+                    ..default()
+                },
+            ),
+            transform: Transform::from_translation(world_to_iso(position) + Vec3::new(0.0, 20.0, 2.0)),
+            ..default()
+        },
+        Name::new("UnitEmoji"),
+    ));
+    
     commands.spawn(Text2dBundle {
         text: Text::from_section(
-            unit_label,
+            "📍", // Generic marker
             TextStyle {
                 font_size: 10.0,
                 color: Color::WHITE,
@@ -580,7 +684,16 @@ fn wave_spawner_system(
             let wave_difficulty = (spawner.wave_number as f32 * 0.5 + 1.0).min(4.0);
             let units_to_spawn = (spawner.units_in_wave as f32 * wave_difficulty) as u32;
             
-            info!("🌊 WAVE {} INCOMING! {} military units deployed", spawner.wave_number, units_to_spawn);
+            info!("🚁 *HELICOPTER ROTORS* 🌊 WAVE {} INCOMING! {} military units deployed 📻 *RADIO STATIC*", spawner.wave_number, units_to_spawn);
+            
+            // Atmospheric audio cues
+            match spawner.wave_number {
+                1 => info!("📻 'Alpha team, move in! Target: Ovidio Guzmán!'"),
+                2 => info!("📻 'Bravo team, reinforce Alpha! Heavy resistance!'"), 
+                3 => info!("📻 'Charlie team, we need immediate backup!'"),
+                4 => info!("📻 'All units! Full assault! Take the safehouse!'"),
+                _ => info!("📻 'Command, we're escalating operations!'"),
+            }
             
             // Spawn military units from different entry points
             let entry_points = vec![
@@ -614,8 +727,8 @@ fn wave_spawner_system(
 
 fn unit_ai_system(
     mut unit_query: Query<(&mut Unit, &Transform, &mut Movement), Without<Objective>>,
-    objective_query: Query<(&Objective, &Transform), Without<Unit>>,
-    other_units: Query<(Entity, &Unit, &Transform)>,
+    objective_query: Query<(&Objective, &Transform), (With<Objective>, Without<Unit>)>,
+    enemy_units: Query<(Entity, &Unit, &Transform), (With<Unit>, Without<Movement>)>,
 ) {
     for (mut unit, transform, mut movement) in unit_query.iter_mut() {
         match unit.faction {
@@ -627,7 +740,7 @@ fn unit_ai_system(
                     let mut nearest_distance = f32::MAX;
                     
                     // Check for enemy units in range
-                    for (entity, other_unit, other_transform) in other_units.iter() {
+                    for (entity, other_unit, other_transform) in enemy_units.iter() {
                         if other_unit.faction == Faction::Cartel {
                             let distance = transform.translation.distance(other_transform.translation);
                             if distance < nearest_distance && distance <= unit.range {
@@ -656,7 +769,7 @@ fn unit_ai_system(
                     let mut nearest_enemy = None;
                     let mut nearest_distance = f32::MAX;
                     
-                    for (entity, other_unit, other_transform) in other_units.iter() {
+                    for (entity, other_unit, other_transform) in enemy_units.iter() {
                         if other_unit.faction == Faction::Military {
                             let distance = transform.translation.distance(other_transform.translation);
                             if distance < nearest_distance && distance <= unit.range {
@@ -711,6 +824,7 @@ fn combat_system(
     mut commands: Commands,
     mut unit_query: Query<(Entity, &mut Unit, &Transform)>,
     mut game_state: ResMut<GameState>,
+    _audio: Res<KiraAudio>, // Add audio system
 ) {
     let mut combat_events = Vec::new();
     
@@ -740,17 +854,29 @@ fn combat_system(
         }
     }
     
-    // Apply damage and visual effects
+    // Apply damage and visual/audio effects
     for (target_entity, damage, attacker_faction, attacker_pos, target_pos) in combat_events {
         if let Ok((entity, mut unit, transform)) = unit_query.get_mut(target_entity) {
             unit.health -= damage;
             
-            // Play gunshot sound
-            // if let Some(assets) = &assets {
-            //     audio.play(assets.gunshot_sound.clone());
-            // }
+            // Audio feedback via console - simulating gunshot sounds
+            let sound_effect = match attacker_faction {
+                Faction::Military => "🔫 *POP-POP-POP*", // Military rifle burst
+                Faction::Cartel => "💥 *BANG-BANG*",    // Cartel pistol shots
+                _ => "💢 *CRACK*",
+            };
             
-            // Spawn muzzle flash particles
+            info!("{} {} fires! {} takes {} damage (HP: {:.1})", 
+                  sound_effect,
+                  format!("{:?}", attacker_faction),
+                  format!("{:?}", unit.faction),
+                  damage,
+                  unit.health);
+            
+            // TODO: Replace with actual audio when files are available
+            // audio.play(assets.gunshot_sound.clone());
+            
+            // Spawn muzzle flash particles with color effects
             for _ in 0..3 {
                 let velocity = Vec3::new(
                     thread_rng().gen_range(-100.0..100.0),
@@ -762,10 +888,10 @@ fn combat_system(
                     SpriteBundle {
                         sprite: Sprite {
                             color: Color::rgb(1.0, 1.0, 0.6),
-                            custom_size: Some(Vec2::new(3.0, 3.0)),
+                            custom_size: Some(Vec2::new(5.0, 5.0)),
                             ..default()
                         },
-                        transform: Transform::from_translation(attacker_pos + Vec3::new(0.0, 0.0, 3.0)),
+                        transform: Transform::from_translation(world_to_iso(attacker_pos) + Vec3::new(0.0, 0.0, 3.0)),
                         ..default()
                     },
                     ParticleEffect {
@@ -792,7 +918,7 @@ fn combat_system(
                             ..default()
                         },
                     ),
-                    transform: Transform::from_translation(transform.translation + Vec3::new(0.0, 10.0, 4.0)),
+                    transform: Transform::from_translation(world_to_iso(transform.translation + Vec3::new(0.0, 10.0, 4.0))),
                     ..default()
                 },
                 DamageIndicator {
@@ -826,6 +952,25 @@ fn combat_system(
             }
             
             if unit.health <= 0.0 {
+                // Death audio feedback
+                let death_sound = match unit.faction {
+                    Faction::Cartel => "💀 *CARTEL DOWN*",
+                    Faction::Military => "⚰️ *MILITARY KIA*", 
+                    _ => "💥 *ELIMINATED*",
+                };
+                
+                let unit_name = match unit.unit_type {
+                    UnitType::Ovidio => "👑 OVIDIO GUZMÁN LÓPEZ",
+                    UnitType::Sicario => "🔫 Sicario",
+                    UnitType::Enforcer => "⚔️ Enforcer", 
+                    UnitType::Soldier => "🪖 Soldier",
+                    UnitType::SpecialForces => "🎯 Special Forces",
+                    UnitType::Vehicle => "🚗 Vehicle",
+                    UnitType::Roadblock => "🚧 Roadblock",
+                };
+                
+                info!("{} {} eliminated! 💥💥💥", death_sound, unit_name);
+                
                 match unit.faction {
                     Faction::Cartel => {
                         game_state.military_score += 10;
@@ -924,8 +1069,9 @@ fn health_bar_system(
         // Update health bars for this unit
         for (mut bar_transform, mut bar_sprite, health_bar) in health_bar_query.iter_mut() {
             if health_bar.owner == unit_entity {
-                // Update position
-                bar_transform.translation = unit_transform.translation + health_bar.offset;
+                // Update position with isometric offset
+                let iso_pos = unit_transform.translation + health_bar.offset;
+                bar_transform.translation = Vec3::new(iso_pos.x, iso_pos.y + 15.0, iso_pos.z); // Higher up in isometric view
                 
                 // Update health bar fill (green bar on top)
                 if health_bar.offset.z > 1.5 { // This is the fill bar
@@ -961,7 +1107,7 @@ fn particle_system(
             transform.translation += particle.velocity * time.delta_seconds();
             
             // Fade out
-            let alpha = 1.0 - particle.lifetime.percent();
+            let _alpha = 1.0 - particle.lifetime.percent();
             // Update sprite color alpha here if needed
         }
     }
@@ -992,13 +1138,13 @@ fn game_phase_system(
     game_state.mission_timer += time.delta_seconds();
     
     let cartel_alive = unit_query.iter().any(|u| u.faction == Faction::Cartel && u.unit_type != UnitType::Roadblock);
-    let military_alive = unit_query.iter().any(|u| u.faction == Faction::Military);
+    let _military_alive = unit_query.iter().any(|u| u.faction == Faction::Military);
     let ovidio_alive = unit_query.iter().any(|u| u.unit_type == UnitType::Ovidio && u.health > 0.0);
     
     // Phase transitions based on time and events
     let new_phase = match game_state.game_phase {
         GamePhase::Preparation if game_state.mission_timer > 5.0 => {
-            info!("🚁 Phase 1: INITIAL RAID - Government forces storm the safehouse!");
+            info!("🚁 *HELICOPTER SOUNDS* 📻 'ATENCIÓN! OPERATION BLACK THURSDAY INITIATED!' 🚁 Phase 1: INITIAL RAID - Government forces storm the safehouse! 🔊 *SIRENS WAILING*");
             GamePhase::InitialRaid
         },
         GamePhase::InitialRaid if game_state.mission_timer > 120.0 => {
@@ -1034,27 +1180,6 @@ fn game_phase_system(
     }
 }
 
-fn ui_system(
-    game_state: Res<GameState>,
-    unit_query: Query<&Unit>,
-) {
-    // This is a placeholder for UI rendering
-    // In a full implementation, we'd use bevy_ui for proper UI elements
-    
-    // Count units for status display
-    let cartel_count = unit_query.iter().filter(|u| u.faction == Faction::Cartel && u.unit_type != UnitType::Roadblock).count();
-    let military_count = unit_query.iter().filter(|u| u.faction == Faction::Military).count();
-    let ovidio_alive = unit_query.iter().any(|u| u.unit_type == UnitType::Ovidio);
-    
-    // Log status every 30 seconds
-    if (game_state.mission_timer % 30.0) < 0.1 {
-        info!("📊 STATUS | Wave: {} | Cartel: {} | Military: {} | Ovidio: {} | Time: {:.0}s", 
-              game_state.current_wave, cartel_count, military_count, 
-              if ovidio_alive { "ALIVE" } else { "CAPTURED/KIA" }, 
-              game_state.mission_timer);
-    }
-}
-
 fn handle_input(
     input: Res<Input<KeyCode>>,
     mut commands: Commands,
@@ -1075,7 +1200,8 @@ fn handle_input(
                     custom_size: Some(Vec2::new(80.0, 30.0)),
                     ..default()
                 },
-                transform: Transform::from_translation(position),
+                transform: Transform::from_translation(world_to_iso(position)),
+                // Remove rotation for clarity
                 ..default()
             },
             Unit {
@@ -1130,7 +1256,7 @@ fn handle_input(
             ));
         }
         
-        info!("🛑 ROADBLOCK deployed! Military convoy movement disrupted");
+        info!("� *CONSTRUCTION SOUNDS* �🛑 ROADBLOCK deployed! Military convoy movement disrupted 📻 'Cartel blocking the roads!'");
         game_state.cartel_score += 5;
     }
     
@@ -1172,7 +1298,7 @@ fn handle_input(
             }
         }
         
-        info!("📱 REINFORCEMENTS arriving! Cartel sends backup to the safehouse");
+        info!("� *ENGINE REVVING* �📱 REINFORCEMENTS arriving! Cartel sends backup to the safehouse 📻 '¡Necesitamos más hombres!'");
         game_state.cartel_score += 10;
     }
     
