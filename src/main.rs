@@ -1,4 +1,6 @@
 use bevy::prelude::*;
+use bevy_kira_audio::prelude::AudioSource as KiraAudioSource;
+use bevy_kira_audio::prelude::*;
 use rand::{thread_rng, Rng};
 use std::time::Duration;
 
@@ -24,7 +26,21 @@ struct Movement {
 }
 
 #[derive(Component)]
-struct HealthBar;
+struct HealthBar {
+    owner: Entity,
+    offset: Vec3,
+}
+
+#[derive(Component)]
+struct DamageIndicator {
+    lifetime: Timer,
+}
+
+#[derive(Component)]
+struct ParticleEffect {
+    lifetime: Timer,
+    velocity: Vec3,
+}
 
 #[derive(Component)]
 struct WaveSpawner {
@@ -40,6 +56,18 @@ struct Objective {
     radius: f32,
     health: f32,
 }
+
+#[derive(Component)]
+struct UIElement;
+
+#[derive(Component)]
+struct StatusText;
+
+#[derive(Component)]
+struct WaveText;
+
+#[derive(Component)]
+struct ScoreText;
 
 // ==================== ENUMS & TYPES ====================
 
@@ -72,6 +100,33 @@ enum ObjectiveType {
 }
 
 // ==================== RESOURCES ====================
+
+// ==================== RESOURCES ====================
+
+#[derive(Resource)]
+struct GameAssets {
+    // Unit sprites
+    sicario_sprite: Handle<Image>,
+    enforcer_sprite: Handle<Image>,
+    ovidio_sprite: Handle<Image>,
+    soldier_sprite: Handle<Image>,
+    special_forces_sprite: Handle<Image>,
+    vehicle_sprite: Handle<Image>,
+    roadblock_sprite: Handle<Image>,
+    safehouse_sprite: Handle<Image>,
+    
+    // UI textures
+    health_bar_bg: Handle<Image>,
+    health_bar_fill: Handle<Image>,
+    
+    // Fonts
+    main_font: Handle<Font>,
+    
+    // Audio
+    gunshot_sound: Handle<KiraAudioSource>,
+    explosion_sound: Handle<KiraAudioSource>,
+    radio_chatter: Handle<KiraAudioSource>,
+}
 
 #[derive(Resource)]
 struct GameState {
@@ -108,6 +163,8 @@ impl Default for GameState {
 
 // ==================== MAIN FUNCTION ====================
 
+// ==================== MAIN FUNCTION ====================
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -119,27 +176,181 @@ fn main() {
             }),
             ..default()
         }))
+        .add_plugins(AudioPlugin)
         .init_resource::<GameState>()
-        .add_systems(Startup, setup)
+        .add_systems(Startup, (setup_assets, setup_ui, setup_game).chain())
         .add_systems(Update, (
             wave_spawner_system,
             unit_ai_system,
             movement_system,
             combat_system,
             health_bar_system,
+            particle_system,
+            damage_indicator_system,
             game_phase_system,
             handle_input,
-            ui_system,
+            ui_update_system,
         ))
         .run();
 }
 
-// ==================== SETUP SYSTEM ====================
+// ==================== SETUP SYSTEMS ====================
 
-fn setup(mut commands: Commands, _asset_server: Res<AssetServer>) {
-    // Spawn camera
+fn setup_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+    // For now, we'll create colored sprites programmatically
+    // Later these can be replaced with actual sprite files
+    
+    let assets = GameAssets {
+        // These would be actual sprite files in a full implementation
+        sicario_sprite: Handle::default(),
+        enforcer_sprite: Handle::default(),
+        ovidio_sprite: Handle::default(),
+        soldier_sprite: Handle::default(),
+        special_forces_sprite: Handle::default(),
+        vehicle_sprite: Handle::default(),
+        roadblock_sprite: Handle::default(),
+        safehouse_sprite: Handle::default(),
+        health_bar_bg: Handle::default(),
+        health_bar_fill: Handle::default(),
+        main_font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+        gunshot_sound: Handle::default(),
+        explosion_sound: Handle::default(),
+        radio_chatter: Handle::default(),
+    };
+    
+    commands.insert_resource(assets);
+}
+
+fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+    // UI Camera
     commands.spawn(Camera2dBundle::default());
     
+    // Main UI Container
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                },
+                ..default()
+            },
+            UIElement,
+        ))
+        .with_children(|parent| {
+            // Top HUD Bar
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(80.0),
+                        padding: UiRect::all(Val::Px(15.0)),
+                        justify_content: JustifyContent::SpaceBetween,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::rgba(0.1, 0.1, 0.1, 0.9).into(),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    // Mission Title
+                    parent.spawn((
+                        TextBundle::from_section(
+                            "⚔️ Battle of Culiacán - October 17, 2019",
+                            TextStyle {
+                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                font_size: 28.0,
+                                color: Color::rgb(1.0, 0.9, 0.6),
+                            },
+                        ),
+                    ));
+                    
+                    // Wave Counter
+                    parent.spawn((
+                        TextBundle::from_section(
+                            "Wave: 0",
+                            TextStyle {
+                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                font_size: 22.0,
+                                color: Color::rgb(1.0, 0.3, 0.3),
+                            },
+                        ),
+                        WaveText,
+                    ));
+                    
+                    // Score Display
+                    parent.spawn((
+                        TextBundle::from_section(
+                            "Cartel: 0 | Military: 0",
+                            TextStyle {
+                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                font_size: 18.0,
+                                color: Color::WHITE,
+                            },
+                        ),
+                        ScoreText,
+                    ));
+                });
+            
+            // Mission Status (Center)
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(50.0),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::rgba(0.8, 0.2, 0.2, 0.8).into(),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn((
+                        TextBundle::from_section(
+                            "🎯 MISSION: Defend Ovidio Guzmán López - Government forces incoming!",
+                            TextStyle {
+                                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                                font_size: 20.0,
+                                color: Color::WHITE,
+                            },
+                        ),
+                        StatusText,
+                    ));
+                });
+            
+            // Bottom Control Bar
+            parent
+                .spawn(NodeBundle {
+                    style: Style {
+                        position_type: PositionType::Absolute,
+                        bottom: Val::Px(0.0),
+                        width: Val::Percent(100.0),
+                        height: Val::Px(60.0),
+                        padding: UiRect::all(Val::Px(15.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    background_color: Color::rgba(0.0, 0.0, 0.0, 0.8).into(),
+                    ..default()
+                })
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        "🎮 SPACE: Deploy Roadblock | R: Call Reinforcements | ESC: Exit | F1: Help",
+                        TextStyle {
+                            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                            font_size: 16.0,
+                            color: Color::rgb(0.8, 0.8, 0.8),
+                        },
+                    ));
+                });
+        });
+}
+
+fn setup_game(mut commands: Commands, _assets: Option<Res<GameAssets>>) {
     info!("🎮 Battle of Culiacán - October 17, 2019");
     info!("🏛️  Government forces attempt to capture Ovidio Guzmán López");
     info!("⚔️  Sinaloa Cartel prepares defensive operations");
@@ -153,12 +364,12 @@ fn setup(mut commands: Commands, _asset_server: Res<AssetServer>) {
                    Vec3::new(-250.0 + i as f32 * 50.0, 150.0, 0.0));
     }
     
-    // Spawn safehouse objective
+    // Spawn safehouse objective with enhanced graphics
     commands.spawn((
         SpriteBundle {
             sprite: Sprite {
-                color: Color::rgb(0.4, 0.3, 0.2),
-                custom_size: Some(Vec2::new(80.0, 60.0)),
+                color: Color::rgb(0.6, 0.4, 0.2),
+                custom_size: Some(Vec2::new(120.0, 80.0)),
                 ..default()
             },
             transform: Transform::from_translation(Vec3::new(-300.0, 200.0, -1.0)),
@@ -169,6 +380,22 @@ fn setup(mut commands: Commands, _asset_server: Res<AssetServer>) {
             position: Vec3::new(-300.0, 200.0, 0.0),
             radius: 100.0,
             health: 200.0,
+        },
+    ));
+    
+    // Add safehouse label
+    commands.spawn((
+        Text2dBundle {
+            text: Text::from_section(
+                "🏠 SAFEHOUSE",
+                TextStyle {
+                    font_size: 16.0,
+                    color: Color::WHITE,
+                    ..default()
+                },
+            ),
+            transform: Transform::from_translation(Vec3::new(-300.0, 250.0, 1.0)),
+            ..default()
         },
     ));
     
@@ -184,11 +411,11 @@ fn setup(mut commands: Commands, _asset_server: Res<AssetServer>) {
 }
 
 fn spawn_ovidio(commands: &mut Commands, position: Vec3) {
-    commands.spawn((
+    let entity = commands.spawn((
         SpriteBundle {
             sprite: Sprite {
                 color: Color::rgb(1.0, 0.8, 0.0), // Golden color for HVT
-                custom_size: Some(Vec2::new(25.0, 25.0)),
+                custom_size: Some(Vec2::new(30.0, 30.0)),
                 ..default()
             },
             transform: Transform::from_translation(position),
@@ -209,25 +436,42 @@ fn spawn_ovidio(commands: &mut Commands, position: Vec3) {
             target_position: None,
             speed: 60.0,
         },
-    ));
+    )).id();
+    
+    // Add name label for Ovidio
+    commands.spawn(Text2dBundle {
+        text: Text::from_section(
+            "👑 OVIDIO",
+            TextStyle {
+                font_size: 12.0,
+                color: Color::YELLOW,
+                ..default()
+            },
+        ),
+        transform: Transform::from_translation(position + Vec3::new(0.0, 25.0, 1.0)),
+        ..default()
+    });
+    
+    // Add health bar for Ovidio
+    spawn_health_bar(commands, entity, position);
 }
 
 fn spawn_unit(commands: &mut Commands, unit_type: UnitType, faction: Faction, position: Vec3) {
     let (color, size, health, damage, range, speed) = match (&unit_type, &faction) {
         (UnitType::Sicario, Faction::Cartel) => 
-            (Color::rgb(0.8, 0.1, 0.1), Vec2::new(15.0, 15.0), 80.0, 25.0, 120.0, 100.0),
+            (Color::rgb(0.9, 0.2, 0.2), Vec2::new(18.0, 18.0), 80.0, 25.0, 120.0, 100.0),
         (UnitType::Enforcer, Faction::Cartel) => 
-            (Color::rgb(0.6, 0.1, 0.1), Vec2::new(20.0, 20.0), 120.0, 40.0, 150.0, 80.0),
+            (Color::rgb(0.7, 0.1, 0.1), Vec2::new(24.0, 24.0), 120.0, 40.0, 150.0, 80.0),
         (UnitType::Soldier, Faction::Military) => 
-            (Color::rgb(0.1, 0.4, 0.1), Vec2::new(15.0, 15.0), 100.0, 30.0, 140.0, 90.0),
+            (Color::rgb(0.2, 0.6, 0.2), Vec2::new(18.0, 18.0), 100.0, 30.0, 140.0, 90.0),
         (UnitType::SpecialForces, Faction::Military) => 
-            (Color::rgb(0.1, 0.6, 0.1), Vec2::new(18.0, 18.0), 140.0, 50.0, 180.0, 110.0),
+            (Color::rgb(0.1, 0.8, 0.1), Vec2::new(22.0, 22.0), 140.0, 50.0, 180.0, 110.0),
         (UnitType::Vehicle, Faction::Military) => 
-            (Color::rgb(0.2, 0.5, 0.2), Vec2::new(30.0, 20.0), 200.0, 60.0, 200.0, 70.0),
-        _ => (Color::GRAY, Vec2::new(15.0, 15.0), 100.0, 20.0, 100.0, 80.0),
+            (Color::rgb(0.3, 0.7, 0.3), Vec2::new(35.0, 25.0), 200.0, 60.0, 200.0, 70.0),
+        _ => (Color::GRAY, Vec2::new(18.0, 18.0), 100.0, 20.0, 100.0, 80.0),
     };
     
-    commands.spawn((
+    let entity = commands.spawn((
         SpriteBundle {
             sprite: Sprite {
                 color,
@@ -241,7 +485,7 @@ fn spawn_unit(commands: &mut Commands, unit_type: UnitType, faction: Faction, po
             health,
             max_health: health,
             faction: faction.clone(),
-            unit_type,
+            unit_type: unit_type.clone(),
             damage,
             range,
             movement_speed: speed,
@@ -251,6 +495,69 @@ fn spawn_unit(commands: &mut Commands, unit_type: UnitType, faction: Faction, po
         Movement {
             target_position: None,
             speed,
+        },
+    )).id();
+    
+    // Add health bar for all units except roadblocks
+    if unit_type != UnitType::Roadblock {
+        spawn_health_bar(commands, entity, position);
+    }
+    
+    // Add unit type indicator
+    let unit_label = match unit_type {
+        UnitType::Sicario => "🔫",
+        UnitType::Enforcer => "💪", 
+        UnitType::Soldier => "🪖",
+        UnitType::SpecialForces => "⭐",
+        UnitType::Vehicle => "🚗",
+        UnitType::Roadblock => "🚧",
+        _ => "❓",
+    };
+    
+    commands.spawn(Text2dBundle {
+        text: Text::from_section(
+            unit_label,
+            TextStyle {
+                font_size: 10.0,
+                color: Color::WHITE,
+                ..default()
+            },
+        ),
+        transform: Transform::from_translation(position + Vec3::new(0.0, 20.0, 1.0)),
+        ..default()
+    });
+}
+
+fn spawn_health_bar(commands: &mut Commands, owner: Entity, position: Vec3) {
+    let _health_bg = commands.spawn((
+        SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgb(0.2, 0.2, 0.2),
+                custom_size: Some(Vec2::new(30.0, 4.0)),
+                ..default()
+            },
+            transform: Transform::from_translation(position + Vec3::new(0.0, -25.0, 1.0)),
+            ..default()
+        },
+        HealthBar {
+            owner,
+            offset: Vec3::new(0.0, -25.0, 1.0),
+        },
+    )).id();
+    
+    commands.spawn((
+        SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgb(0.2, 0.8, 0.2),
+                custom_size: Some(Vec2::new(30.0, 4.0)),
+                ..default()
+            },
+            transform: Transform::from_translation(position + Vec3::new(0.0, -25.0, 2.0)),
+            ..default()
+        },
+        HealthBar {
+            owner,
+            offset: Vec3::new(0.0, -25.0, 2.0),
         },
     ));
 }
@@ -412,7 +719,7 @@ fn combat_system(
         .map(|(e, u, t)| (e, u.clone(), *t))
         .collect();
     
-    for (entity, mut unit, _transform) in unit_query.iter_mut() {
+    for (_entity, mut unit, _transform) in unit_query.iter_mut() {
         unit.attack_cooldown.tick(time.delta());
         
         if let Some(target_entity) = unit.target {
@@ -422,7 +729,7 @@ fn combat_system(
                     .find(|(e, _, _)| *e == target_entity) {
                     let distance = _transform.translation.distance(target_transform.translation);
                     if distance <= unit.range {
-                        combat_events.push((target_entity, unit.damage, unit.faction.clone()));
+                        combat_events.push((target_entity, unit.damage, unit.faction.clone(), _transform.translation, target_transform.translation));
                     } else {
                         unit.target = None; // Target out of range
                     }
@@ -433,27 +740,90 @@ fn combat_system(
         }
     }
     
-    // Apply damage
-    for (target_entity, damage, attacker_faction) in combat_events {
+    // Apply damage and visual effects
+    for (target_entity, damage, attacker_faction, attacker_pos, target_pos) in combat_events {
         if let Ok((entity, mut unit, transform)) = unit_query.get_mut(target_entity) {
             unit.health -= damage;
             
-            // Visual feedback - spawn damage indicator
+            // Play gunshot sound
+            // if let Some(assets) = &assets {
+            //     audio.play(assets.gunshot_sound.clone());
+            // }
+            
+            // Spawn muzzle flash particles
+            for _ in 0..3 {
+                let velocity = Vec3::new(
+                    thread_rng().gen_range(-100.0..100.0),
+                    thread_rng().gen_range(-100.0..100.0),
+                    0.0,
+                );
+                
+                commands.spawn((
+                    SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::rgb(1.0, 1.0, 0.6),
+                            custom_size: Some(Vec2::new(3.0, 3.0)),
+                            ..default()
+                        },
+                        transform: Transform::from_translation(attacker_pos + Vec3::new(0.0, 0.0, 3.0)),
+                        ..default()
+                    },
+                    ParticleEffect {
+                        lifetime: Timer::new(Duration::from_millis(200), TimerMode::Once),
+                        velocity,
+                    },
+                ));
+            }
+            
+            // Spawn damage indicator
             let indicator_color = match attacker_faction {
-                Faction::Military => Color::rgb(0.2, 0.8, 0.2),
-                Faction::Cartel => Color::rgb(0.8, 0.2, 0.2),
+                Faction::Military => Color::rgb(0.3, 1.0, 0.3),
+                Faction::Cartel => Color::rgb(1.0, 0.3, 0.3),
                 _ => Color::WHITE,
             };
             
-            commands.spawn(SpriteBundle {
-                sprite: Sprite {
-                    color: indicator_color,
-                    custom_size: Some(Vec2::new(3.0, 3.0)),
+            commands.spawn((
+                Text2dBundle {
+                    text: Text::from_section(
+                        format!("-{}", damage as u32),
+                        TextStyle {
+                            font_size: 14.0,
+                            color: indicator_color,
+                            ..default()
+                        },
+                    ),
+                    transform: Transform::from_translation(transform.translation + Vec3::new(0.0, 10.0, 4.0)),
                     ..default()
                 },
-                transform: Transform::from_translation(transform.translation + Vec3::new(0.0, 0.0, 1.0)),
-                ..default()
-            });
+                DamageIndicator {
+                    lifetime: Timer::new(Duration::from_secs(1), TimerMode::Once),
+                },
+            ));
+            
+            // Impact particles at target
+            for _ in 0..2 {
+                let velocity = Vec3::new(
+                    thread_rng().gen_range(-50.0..50.0),
+                    thread_rng().gen_range(-50.0..50.0),
+                    0.0,
+                );
+                
+                commands.spawn((
+                    SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::rgb(0.8, 0.3, 0.3),
+                            custom_size: Some(Vec2::new(2.0, 2.0)),
+                            ..default()
+                        },
+                        transform: Transform::from_translation(target_pos + Vec3::new(0.0, 0.0, 3.0)),
+                        ..default()
+                    },
+                    ParticleEffect {
+                        lifetime: Timer::new(Duration::from_millis(300), TimerMode::Once),
+                        velocity,
+                    },
+                ));
+            }
             
             if unit.health <= 0.0 {
                 match unit.faction {
@@ -470,17 +840,148 @@ fn combat_system(
                     _ => {}
                 }
                 
-                commands.entity(entity).despawn();
+                // Spawn death explosion effect
+                for _ in 0..8 {
+                    let velocity = Vec3::new(
+                        thread_rng().gen_range(-150.0..150.0),
+                        thread_rng().gen_range(-150.0..150.0),
+                        0.0,
+                    );
+                    
+                    commands.spawn((
+                        SpriteBundle {
+                            sprite: Sprite {
+                                color: Color::rgb(1.0, 0.6, 0.2),
+                                custom_size: Some(Vec2::new(4.0, 4.0)),
+                                ..default()
+                            },
+                            transform: Transform::from_translation(transform.translation + Vec3::new(0.0, 0.0, 3.0)),
+                            ..default()
+                        },
+                        ParticleEffect {
+                            lifetime: Timer::new(Duration::from_millis(500), TimerMode::Once),
+                            velocity,
+                        },
+                    ));
+                }
+                
+                commands.entity(entity).despawn_recursive();
             }
         }
     }
 }
 
-fn health_bar_system(
-    _unit_query: Query<(Entity, &Unit, &Transform), Changed<Unit>>,
+fn ui_update_system(
+    game_state: Res<GameState>,
+    unit_query: Query<&Unit>,
+    mut wave_text: Query<&mut Text, (With<WaveText>, Without<StatusText>, Without<ScoreText>)>,
+    mut status_text: Query<&mut Text, (With<StatusText>, Without<WaveText>, Without<ScoreText>)>,
+    mut score_text: Query<&mut Text, (With<ScoreText>, Without<WaveText>, Without<StatusText>)>,
 ) {
-    // Simple health bar system - could be enhanced with actual health bar sprites
-    // Currently just a placeholder
+    // Update wave counter
+    if let Ok(mut text) = wave_text.get_single_mut() {
+        text.sections[0].value = format!("Wave: {}", game_state.current_wave);
+    }
+    
+    // Update score display
+    if let Ok(mut text) = score_text.get_single_mut() {
+        text.sections[0].value = format!("Cartel: {} | Military: {}", 
+                                        game_state.cartel_score, game_state.military_score);
+    }
+    
+    // Update mission status
+    if let Ok(mut text) = status_text.get_single_mut() {
+        let cartel_count = unit_query.iter()
+            .filter(|u| u.faction == Faction::Cartel && u.unit_type != UnitType::Roadblock)
+            .count();
+        let military_count = unit_query.iter()
+            .filter(|u| u.faction == Faction::Military)
+            .count();
+        let ovidio_alive = unit_query.iter()
+            .any(|u| u.unit_type == UnitType::Ovidio);
+        
+        let status_msg = match game_state.game_phase {
+            GamePhase::Preparation => "🎯 PREPARING: Government forces mobilizing...",
+            GamePhase::InitialRaid => "🚁 PHASE 1: Initial raid in progress!",
+            GamePhase::BlockConvoy => "🛑 PHASE 2: Block all escape routes!",
+            GamePhase::ApplyPressure => "👥 PHASE 3: Pressure tactics engaged!",
+            GamePhase::HoldTheLine => "⏰ PHASE 4: Final showdown - Hold the line!",
+            GamePhase::GameOver => if game_state.ovidio_captured { "💀 DEFEAT: Ovidio captured" } else { "🏆 VICTORY: Historical outcome achieved" },
+        };
+        
+        text.sections[0].value = format!("{} | Cartel: {} | Military: {} | Ovidio: {} | Time: {:.0}s",
+                                        status_msg, cartel_count, military_count,
+                                        if ovidio_alive { "SAFE" } else { "CAPTURED" },
+                                        game_state.mission_timer);
+    }
+}
+
+fn health_bar_system(
+    unit_query: Query<(Entity, &Unit, &Transform), Changed<Unit>>,
+    mut health_bar_query: Query<(&mut Transform, &mut Sprite, &HealthBar), Without<Unit>>,
+) {
+    for (unit_entity, unit, unit_transform) in unit_query.iter() {
+        // Update health bars for this unit
+        for (mut bar_transform, mut bar_sprite, health_bar) in health_bar_query.iter_mut() {
+            if health_bar.owner == unit_entity {
+                // Update position
+                bar_transform.translation = unit_transform.translation + health_bar.offset;
+                
+                // Update health bar fill (green bar on top)
+                if health_bar.offset.z > 1.5 { // This is the fill bar
+                    let health_percentage = (unit.health / unit.max_health).max(0.0);
+                    bar_sprite.custom_size = Some(Vec2::new(30.0 * health_percentage, 4.0));
+                    
+                    // Change color based on health
+                    bar_sprite.color = if health_percentage > 0.6 {
+                        Color::rgb(0.2, 0.8, 0.2) // Green
+                    } else if health_percentage > 0.3 {
+                        Color::rgb(0.8, 0.8, 0.2) // Yellow
+                    } else {
+                        Color::rgb(0.8, 0.2, 0.2) // Red
+                    };
+                }
+            }
+        }
+    }
+}
+
+fn particle_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut particle_query: Query<(Entity, &mut Transform, &mut ParticleEffect)>,
+) {
+    for (entity, mut transform, mut particle) in particle_query.iter_mut() {
+        particle.lifetime.tick(time.delta());
+        
+        if particle.lifetime.finished() {
+            commands.entity(entity).despawn();
+        } else {
+            // Move particle
+            transform.translation += particle.velocity * time.delta_seconds();
+            
+            // Fade out
+            let alpha = 1.0 - particle.lifetime.percent();
+            // Update sprite color alpha here if needed
+        }
+    }
+}
+
+fn damage_indicator_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut indicator_query: Query<(Entity, &mut Transform, &mut DamageIndicator)>,
+) {
+    for (entity, mut transform, mut indicator) in indicator_query.iter_mut() {
+        indicator.lifetime.tick(time.delta());
+        
+        if indicator.lifetime.finished() {
+            commands.entity(entity).despawn();
+        } else {
+            // Float upward
+            transform.translation.y += 50.0 * time.delta_seconds();
+        }
+    }
 }
 
 fn game_phase_system(
@@ -560,26 +1061,26 @@ fn handle_input(
     mut game_state: ResMut<GameState>,
 ) {
     if input.just_pressed(KeyCode::Space) {
-        // Deploy roadblock
+        // Deploy roadblock with enhanced visuals
         let position = Vec3::new(
             thread_rng().gen_range(-400.0..400.0),
             thread_rng().gen_range(-300.0..300.0),
             0.0
         );
         
-        commands.spawn((
+        let _entity = commands.spawn((
             SpriteBundle {
                 sprite: Sprite {
-                    color: Color::rgb(0.6, 0.3, 0.0),
-                    custom_size: Some(Vec2::new(60.0, 25.0)),
+                    color: Color::rgb(0.7, 0.4, 0.1),
+                    custom_size: Some(Vec2::new(80.0, 30.0)),
                     ..default()
                 },
                 transform: Transform::from_translation(position),
                 ..default()
             },
             Unit {
-                health: 50.0,
-                max_health: 50.0,
+                health: 75.0,
+                max_health: 75.0,
                 faction: Faction::Cartel,
                 unit_type: UnitType::Roadblock,
                 damage: 0.0,
@@ -588,14 +1089,53 @@ fn handle_input(
                 target: None,
                 attack_cooldown: Timer::new(Duration::from_secs(1), TimerMode::Repeating),
             },
-        ));
+        )).id();
+        
+        // Add roadblock label
+        commands.spawn(Text2dBundle {
+            text: Text::from_section(
+                "🚧 ROADBLOCK",
+                TextStyle {
+                    font_size: 10.0,
+                    color: Color::ORANGE,
+                    ..default()
+                },
+            ),
+            transform: Transform::from_translation(position + Vec3::new(0.0, 20.0, 1.0)),
+            ..default()
+        });
+        
+        // Spawn construction particles
+        for _ in 0..5 {
+            let velocity = Vec3::new(
+                thread_rng().gen_range(-80.0..80.0),
+                thread_rng().gen_range(-80.0..80.0),
+                0.0,
+            );
+            
+            commands.spawn((
+                SpriteBundle {
+                    sprite: Sprite {
+                        color: Color::rgb(0.8, 0.6, 0.2),
+                        custom_size: Some(Vec2::new(3.0, 3.0)),
+                        ..default()
+                    },
+                    transform: Transform::from_translation(position + Vec3::new(0.0, 0.0, 2.0)),
+                    ..default()
+                },
+                ParticleEffect {
+                    lifetime: Timer::new(Duration::from_millis(400), TimerMode::Once),
+                    velocity,
+                },
+            ));
+        }
         
         info!("🛑 ROADBLOCK deployed! Military convoy movement disrupted");
         game_state.cartel_score += 5;
     }
     
     if input.just_pressed(KeyCode::R) {
-        // Call reinforcements
+        // Call reinforcements with enhanced spawning
         let spawn_positions = vec![
             Vec3::new(-400.0, 200.0, 0.0),
             Vec3::new(-350.0, 150.0, 0.0),
@@ -605,6 +1145,31 @@ fn handle_input(
         for (i, position) in spawn_positions.iter().enumerate() {
             let unit_type = if i == 0 { UnitType::Enforcer } else { UnitType::Sicario };
             spawn_unit(&mut commands, unit_type, Faction::Cartel, *position);
+            
+            // Spawn arrival particles
+            for _ in 0..8 {
+                let velocity = Vec3::new(
+                    thread_rng().gen_range(-120.0..120.0),
+                    thread_rng().gen_range(-120.0..120.0),
+                    0.0,
+                );
+                
+                commands.spawn((
+                    SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::rgb(0.9, 0.2, 0.2),
+                            custom_size: Some(Vec2::new(4.0, 4.0)),
+                            ..default()
+                        },
+                        transform: Transform::from_translation(*position + Vec3::new(0.0, 0.0, 2.0)),
+                        ..default()
+                    },
+                    ParticleEffect {
+                        lifetime: Timer::new(Duration::from_millis(600), TimerMode::Once),
+                        velocity,
+                    },
+                ));
+            }
         }
         
         info!("📱 REINFORCEMENTS arriving! Cartel sends backup to the safehouse");
@@ -620,10 +1185,12 @@ fn handle_input(
     
     // Debug keys
     if input.just_pressed(KeyCode::F1) {
-        info!("🎮 CONTROLS:");
-        info!("SPACE - Deploy roadblock (block military movement)");
-        info!("R - Call reinforcements (spawn cartel backup)");  
+        info!("🎮 ENHANCED CONTROLS:");
+        info!("SPACE - Deploy roadblock with construction effects");
+        info!("R - Call reinforcements with arrival particles");  
         info!("ESC - End simulation");
         info!("F1 - Show this help");
+        info!("📊 Graphics: Health bars, damage indicators, particle effects");
+        info!("🎨 Visual: Unit icons, labels, explosion effects");
     }
 }
